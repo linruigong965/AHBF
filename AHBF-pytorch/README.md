@@ -26,6 +26,6 @@ python train_ahbf.py  --model resnet32   --num_branches 4 --aux 4 --lambda1 2 --
 
 After training,the model will be saved in './dataset/num_epochs/model/'
 
+```bash
 python eval.py --model resnet32 --num_branches 4 --aux 4 --root model_root
-
-
+```
