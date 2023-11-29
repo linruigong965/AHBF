@@ -10,12 +10,17 @@ wandb offline
 to deactivate wandb.
 
 ## train baseline
+```bash
 
 python train.py --model resnet32 
 
+```
+
 ## train AHBF
 
-python train_ahbf.py --model resnet32 --num_branches 4 --aux 4 --lambda1 2 lambda2 4
+```bash
+python train_ahbf.py  --model resnet32   --num_branches 4 --aux 4 --lambda1 2 --lambda2 4
+```
 
 ## test AHBF
 

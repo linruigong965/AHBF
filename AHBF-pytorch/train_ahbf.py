@@ -17,11 +17,12 @@ import models
 import models.model_backbone as model_backbone
 import wandb
 # Set the random seed for reproducible experiments
-# random.seed(97)
-# torch.manual_seed(97)
+random.seed(10)
+torch.manual_seed(10)
 # if torch.cuda.is_available(): torch.cuda.manual_seed(97)
 torch.backends.cudnn.benchmark = True
 # torch.backends.cudnn.deterministic = True
+
 
 # Set parameters
 parser = argparse.ArgumentParser()
@@ -45,24 +46,29 @@ parser.add_argument('--num_workers', default=8, type=int, help = 'Input the numb
 parser.add_argument('--gpu_id', default='0', type=str, help='id(s) for CUDA_VISIBLE_DEVICES')
 
 parser.add_argument('--num_branches', default=4, type=int, help = 'Input the number of branches: default(4)')
-parser.add_argument('--aux', default=4, type=int, help = 'multiplier for layers increasement default(4)')
+parser.add_argument('--aux', default=2, type=int, help = 'multiplier for layers increasement default(4)')
 
 parser.add_argument('--loss', default='KL', type=str, help = 'Define the loss between student output and group output: default(KL_Loss)')
 parser.add_argument('--kd_T', default=3.0, type=float, help = 'Input the temperature: default(3.0)')
 
-parser.add_argument('--rampup', default=300, type=float, help='rampup function: default(300)')
-parser.add_argument('--kd_weight', default=1.0, type=float)
+parser.add_argument('--rampup', default=240, type=float, help='rampup function: default(300)')
+parser.add_argument('--kd_weight', default=1.5, type=float)
 parser.add_argument('--lambda2', default=1.0, type=float)
 parser.add_argument('--lambda1', default=1.0, type=float)
 parser.add_argument('--att_type', default='conv', type=str, help='use cbam\se\nonlocal to employ different attention mechanism: default(conv)')
 
 
 parser.add_argument('--wandb_notes', default='', type=str)
+parser.add_argument('--notes', default='', type=str)
 ll=time.time()
 
 args = parser.parse_args()
 state = {k: v for k, v in args._get_kwargs()}
 print(args)
+if os.path.exists(f'./results1{args.gpu_id}.txt'):
+    pass
+else:
+    assert False, 'nofile'
 
 # Use CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
@@ -105,8 +111,8 @@ def train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args
 
             for output in logitlist:
                 loss_true +=   criterion(output, labels_batch)
-            for output1 in ensem_logits:
-                loss_true +=   criterion(output1, labels_batch)
+            for output_en in ensem_logits:
+                loss_true +=   criterion(output_en, labels_batch)
             for i in range(0, args.num_branches - 1):
                 if i == 0:
                     loss_group_dkd +=  criterion_T(logitlist[i],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2
@@ -116,6 +122,10 @@ def train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args
                     loss_group_dkd +=  criterion_T(ensem_logits[i - 1],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2
                     loss_group_ekd +=  criterion_T(logitlist[i + 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
                     loss_group_ekd +=  criterion_T(ensem_logits[i - 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
+            # for i in range(0, args.num_branches ):
+            #     loss_group_dkd +=  criterion_T(ensem_logits[i - 1],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2
+            #     loss_group_ekd +=  criterion_T(logitlist[i + 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
+            #     loss_group_ekd +=  criterion_T(ensem_logits[i - 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
 
             loss = loss_true +  loss_group_dkd+loss_group_ekd
 
@@ -162,7 +172,7 @@ def train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args
         train_metrics.update({'train_acc_aux'+str(i) : accTop1_avg[i].value()})
         wandb.log({'train_acc_aux' + str(i): accTop1_avg[i].value()})
 
-    for i in range(1,args.num_branches-1 ):
+    for i in range(0,args.num_branches-1 ):
         train_metrics.update({'train_acc_afm'+str(i) : eaccTop1_avg[i].value()})
         wandb.log({'train_acc_afm' + str(i): eaccTop1_avg[i].value()})
 
@@ -208,13 +218,13 @@ def evaluate(test_loader, model, criterion, criterion_T, accuracy, args, rampup_
                 loss_true +=   criterion(output1, labels_batch)
             for i in range(0, args.num_branches - 1):
                 if i == 0:
-                    loss_group_dkd +=  criterion_T(logitlist[i],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2
-                    loss_group_ekd +=  criterion_T(logitlist[i], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
-                    loss_group_ekd +=  criterion_T(logitlist[i + 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
+                    loss_group_dkd +=  criterion_T(logitlist[i],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2*0.5
+                    loss_group_ekd +=  criterion_T(logitlist[i], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1*0.5
+                    loss_group_ekd +=  criterion_T(logitlist[i + 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1*0.5
                 else:
-                    loss_group_dkd +=  criterion_T(ensem_logits[i - 1],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2
-                    loss_group_ekd +=  criterion_T(logitlist[i + 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
-                    loss_group_ekd +=  criterion_T(ensem_logits[i - 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1
+                    loss_group_dkd +=  criterion_T(ensem_logits[i - 1],logitlist[i + 1]) * args.kd_weight * rampup_weight *args.lambda2*0.5
+                    loss_group_ekd +=  criterion_T(logitlist[i + 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1*0.5
+                    loss_group_ekd +=  criterion_T(ensem_logits[i - 1], ensem_logits[i]) * args.kd_weight * rampup_weight * args.lambda1*0.5
 
 
 
@@ -250,7 +260,7 @@ def evaluate(test_loader, model, criterion, criterion_T, accuracy, args, rampup_
         test_metrics.update({'test_acc_aux'+str(i) : accTop1_avg[i].value()})
         wandb.log({'test_acc_aux' + str(i): accTop1_avg[i].value()})
 
-    for i in range(1,args.num_branches-1 ):
+    for i in range(0,args.num_branches-1 ):
         test_metrics.update({'test_accTop1_afm'+str(i) : eaccTop1_avg[i].value()})
         wandb.log({'test_acc_afm' + str(i): eaccTop1_avg[i].value()})
 
@@ -304,7 +314,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
 
         # Set rampup_weight or originial temperature scale
-        rampup_weight = get_current_rampup_weight(epoch, args.rampup)
+        rampup_weight = get_current_rampup_weight(epoch, args.rampup)*0.5
 
         # compute number of batches in one epoch (one full pass over the training set)
         train_metrics = train(train_loader, model, optimizer, criterion, criterion_T, accuracy, args, rampup_weight)
@@ -342,8 +352,16 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, c
 
             # Save model and optimizer
             shutil.copyfile(last_path, os.path.join(model_dir, 'best.pth'))
+    if os.path.exists(f'./results1{args.gpu_id}.txt'):
+        with open(f'./results1{args.gpu_id}.txt','a') as f:
+            f.write(str(best_acc)+'\n')
+    else:
+        assert False,'nofile'
 
-    # writer.close()
+
+
+
+# writer.close()
 
 def get_current_rampup_weight(current, rampup_length = args.rampup):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -359,12 +377,13 @@ if __name__ == '__main__':
     begin_time = time.time()
     # Set the model directory
 
-    model_dir= os.path.join('.', args.dataset, str(args.num_epochs), args.model + 'B' + str(args.num_branches) + 'T' + str(args.kd_T) + 'A' + str(args.aux) )
+    model_dir= os.path.join('.', args.dataset, str(args.num_epochs), args.model + 'B' + str(args.num_branches) + \
+                            'T' + str(args.kd_T) + 'A' + str(args.aux)+'N'+args.notes+'G'+args.gpu_id)
 
     if not os.path.exists(model_dir):
         print("Directory does not exist! Making directory {}".format(model_dir))
         os.makedirs(model_dir)
-    wandb.init(config=vars(args), project="test-project", notes=args.wandb_notes, \
+    wandb.init(config=vars(args), project="AHBF", notes=args.wandb_notes, \
                name=args.model+'_aux'+str(args.aux) + '_k' + str(args.kd_weight))
 
     # Set the logger

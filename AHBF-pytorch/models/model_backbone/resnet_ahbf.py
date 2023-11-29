@@ -366,10 +366,9 @@ class Bottleneck(nn.Module):
 
         return out
 
-
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=10, num_branches=3, aux=0, type='conv',zero_init_residual=False,
-                 groups=1,  replace_stride_with_dilation=None, norm_layer=None,):
+                 groups=1, width_per_group=64, replace_stride_with_dilation=None, norm_layer=None,):
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -397,12 +396,14 @@ class ResNet(nn.Module):
         fix_inplanes = self.inplanes  # 32
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         for i in range(num_branches):
-            setattr(self, 'layer3_' + str(i), self._make_layer(block, 64, layers[2] + i * aux, stride=2))
+            setattr(self, 'layer3_' + str(i), \
+            self._make_layer(block, 64, layers[2] + i * aux, stride=2))
             self.inplanes = fix_inplanes  ##reuse self.inplanes
-            setattr(self, 'classifier3_' + str(i), nn.Linear(64 * block.expansion, num_classes))
+            setattr(self, 'classifier3_' + str(i), \
+                    nn.Linear(64 * block.expansion, num_classes))
         if type == 'conv':
             for i in range(num_branches - 1):
-                setattr(self, 'afm_' + str(i), AHBF(64 * block.expansion))
+                setattr(self, 'afm_' + str(i), AHBF_f(64 * block.expansion))
         elif type == 'se':
             for i in range(num_branches - 1):
                 setattr(self, 'afm_' + str(i), AHBF_se(64 * block.expansion))
@@ -451,8 +452,8 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-
         # print('*'*50)
+        # score_list=[]
         featurelist = []
         featurelist1 = []
         logitlist = []
@@ -468,7 +469,7 @@ class ResNet(nn.Module):
         featurelist.append(x_3)
         x_3 = self.avgpool(x_3)  # B x 64 x 1 x 1
         x_3 = x_3.view(x_3.size(0), -1)  # B x 64
-        featurelist1.append(x_3)
+        # featurelist1.append(x_3)
 
         x_3_1 = getattr(self, 'classifier3_0')(x_3)  # B x num_classes
         logitlist.append(x_3_1)
@@ -480,7 +481,7 @@ class ResNet(nn.Module):
 
             temp = self.avgpool(temp)  # B x 64 x 1 x 1
             temp = temp.view(temp.size(0), -1)
-            featurelist1.append(temp)
+            # featurelist1.append(temp)
             temp_out = getattr(self, 'classifier3_' + str(i))(temp)
             logitlist.append(temp_out)
 
@@ -490,19 +491,22 @@ class ResNet(nn.Module):
         for i in range(0, self.num_branches - 1):
             if i == 0:
                 ensembleff, logit = getattr(self, 'afm_' + str(i))(featurelist[i], featurelist[i + 1], logitlist[i],
-                                                                   logitlist[i + 1])
+                                                                   logitlist[i + 1],i+2)
+                # score_list.append(sco_list)
                 ensem_logits.append(logit)
                 ensem_fea.append(ensembleff)
             else:
                 ensembleff, logit = getattr(self, 'afm_' + str(i))(ensem_fea[i - 1], featurelist[i + 1],
                                                                    ensem_logits[i - 1], logitlist[
-                                                                       i + 1])
+                                                                       i + 1],i+2)
+                # score_list.append(sco_list)
                 ensem_logits.append(logit)
                 ensem_fea.append(ensembleff)
 
         return logitlist, ensem_logits
 
         # return logitlist, ensem_logits, featurelist
+
 
 
 class ResNet_ceonly(nn.Module):
@@ -872,8 +876,6 @@ class ResNet_v2(nn.Module):
 
         return logitlist, ensem_logits
 
-
-
 def resnet32(pretrained=False, path=None, **kwargs):
     """
     Constructs a ResNet-32 model.
@@ -886,6 +888,8 @@ def resnet32(pretrained=False, path=None, **kwargs):
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])
     return model
+
+
 def resnet32_p(pretrained=False, path=None, **kwargs):
     """
     Constructs a ResNet-32 model.
